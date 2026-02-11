@@ -1,0 +1,133 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+node_modules/
+/node
+package-lock.json
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# testing
+/coverage
+*.lcov
+.nyc_output
+
+# next.js
+/.next/
+/out/
+.next
+out
+
+# production
+/build
+dist
+build
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+lerna-debug.log*
+
+# env files (keep .env.example or .env.local.example if needed)
+.env
+.env*.local
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# vercel
+.vercel
+*.vercel.json
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+*.tsbuildinfo
+.tsbuildinfo
+
+# misc
+.DS_Store
+*.pem
+Thumbs.db
+
+# IDEs and editors
+/.idea
+/.vscode
+*.swp
+*.swo
+*~
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+.history
+
+# logs
+logs
+*.log
+
+# temporary files
+*.tmp
+*.temp
+.cache
+.temp
+
+# testing
+.jest-cache
+.eslintcache
+
+# Manim generated content
+/manim_jobs
+/public/manim_videos
+
+# Project-specific temporary files
+debug-storage.js
+er.html
+my-v0-project@*
+
+# local database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# OS metadata
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Backup files
+*.bak
+*.backup
+*-backup.*
+*.old
