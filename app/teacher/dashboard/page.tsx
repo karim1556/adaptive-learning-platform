@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useRequireAuth } from "@/hooks/use-auth"
 import { useSearchParams, useRouter } from "next/navigation"
 import { TeacherHeader } from "@/components/teacher/header-new"
@@ -185,7 +185,7 @@ function CreateClassModal({
   )
 }
 
-export default function TeacherDashboard() {
+function TeacherDashboardContent() {
   const { user, loading: authLoading } = useRequireAuth(["teacher"])
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -551,5 +551,20 @@ export default function TeacherDashboard() {
         />
       </div>
     </div>
+  )
+}
+
+export default function TeacherDashboard() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent motion-reduce:animate-[spin_1.5s_linear_infinite]" />
+          <p className="mt-4 text-sm text-muted-foreground">Loading dashboard...</p>
+        </div>
+      </div>
+    }>
+      <TeacherDashboardContent />
+    </Suspense>
   )
 }

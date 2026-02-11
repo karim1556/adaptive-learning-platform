@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useRequireAuth } from "@/hooks/use-auth"
 import { supabase } from "@/lib/supabaseClient"
@@ -75,7 +75,7 @@ const INTEREST_OPTIONS = [
   "Engineering",
 ]
 
-export default function StudentOnboardingPage() {
+function StudentOnboardingContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const isEditMode = searchParams.get("edit") === "true"
@@ -621,5 +621,20 @@ export default function StudentOnboardingPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function StudentOnboardingPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-900 dark:to-slate-800">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent motion-reduce:animate-[spin_1.5s_linear_infinite]" />
+          <p className="mt-4 text-sm text-muted-foreground">Loading onboarding...</p>
+        </div>
+      </div>
+    }>
+      <StudentOnboardingContent />
+    </Suspense>
   )
 }
