@@ -17,6 +17,7 @@ const ROLES = [
 ]
 
 export default function LoginPage() {
+  const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"
   const router = useRouter()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -74,7 +75,7 @@ export default function LoginPage() {
         const { data, error: authError } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { role: selectedRole } }
+          options: { data: { role: selectedRole }, redirectTo: SITE_URL, emailRedirectTo: SITE_URL }
         })
 
         if (authError) {
