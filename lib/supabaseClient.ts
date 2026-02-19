@@ -19,6 +19,16 @@ if (!url || !anonKey) {
 	)
 }
 
-export const supabase = createClient(url, anonKey)
+export const supabase = createClient(url, anonKey, {
+	auth: {
+		// Avoid automatic refresh attempts (prevents noisy "Invalid Refresh Token" logs
+		// when code runs in non-browser/server contexts where a refresh token isn't available).
+		autoRefreshToken: false,
+		// Don't try to detect/handle session from URL on page load (Next routing can cause issues).
+		detectSessionInUrl: false,
+		// Keep session persistence enabled in the browser (default behavior).
+		persistSession: true,
+	},
+})
 
 export default supabase
