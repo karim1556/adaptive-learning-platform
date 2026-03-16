@@ -97,8 +97,14 @@ function uniqueIds(values: Array<string | null | undefined>) {
 }
 
 function isMissingColumnError(error: any) {
-  const message = String(error?.message || "")
-  return error?.code === "PGRST204" || message.toLowerCase().includes("schema cache")
+  const message = String(error?.message || "").toLowerCase()
+  return (
+    error?.code === "PGRST204" ||
+    error?.code === "42703" ||
+    message.includes("schema cache") ||
+    (message.includes("column") && message.includes("does not exist")) ||
+    message.includes("could not find the")
+  )
 }
 
 function normalizeDemoLessonRecord(record: any, fallbackMode = "reading") {
