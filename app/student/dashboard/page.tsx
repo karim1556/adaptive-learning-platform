@@ -4,6 +4,9 @@ import { useRequireAuth } from "@/hooks/use-auth"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabaseClient"
+import { MasteryBadges } from "@/components/student/mastery-badges"
+import { ProgressShareCard } from "@/components/student/progress-share-card"
+import { getStudentBadges, buildAchievementShareText, syncStudentBadges, type MasteryBadge } from "@/lib/student-achievements"
 import { StudentHeader } from "@/components/student/header-new"
 import { StudentSidebar } from "@/components/student/sidebar-new"
 import { 
@@ -14,6 +17,7 @@ import {
   type StudentMasteryData
 } from "@/lib/lesson-service"
 import { updateStudentInClasses } from "@/lib/data-service"
+import { deriveStudentMetrics } from "@/lib/student-metrics"
 import { 
   TrendingUp, 
   Zap, 
@@ -28,7 +32,9 @@ import {
   BookText,
   Hand,
   CheckCircle,
-  Play
+  Play,
+  Copy,
+  ExternalLink
 } from "lucide-react"
 import type { StudentDashboardData } from "@/lib/student-data"
 import Link from "next/link"
@@ -69,6 +75,10 @@ export default function StudentDashboard() {
   const [lessonProgress, setLessonProgress] = useState<LessonProgress[]>([])
   const [masteryData, setMasteryData] = useState<StudentMasteryData[]>([])
   const [totalLessons, setTotalLessons] = useState(0)
+  const [allLessons, setAllLessons] = useState<any[]>([])
+  const [studentDetails, setStudentDetails] = useState<any | null>(null)
+  const [badges, setBadges] = useState<MasteryBadge[]>([])
+  const [shareStatus, setShareStatus] = useState("")
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -83,6 +93,7 @@ export default function StudentDashboard() {
         console.log("Dashboard: User metadata:", meta)
         const varkMeta = meta.varkProfile || null
         const joinedClasses = meta.joinedClasses || []
+        setStudentDetails(meta.studentDetails || null)
         
         // Update student info in all enrolled classes (sync name/rollNumber)
         const studentDetails = meta.studentDetails
@@ -112,6 +123,8 @@ export default function StudentDashboard() {
           .eq("id", user.id)
           .maybeSingle()
 
+        const resolvedVark = profile?.vark_profile || varkMeta || null
+
         // Get lesson progress and mastery data
         const [progressData, allLessons, mastery] = await Promise.all([
           getAllStudentProgress(user.id),
@@ -121,56 +134,75 @@ export default function StudentDashboard() {
 
         if (!mounted) return
 
-        // Calculate real mastery from lesson checkpoints
-        const completedLessons = progressData.filter(p => p.completedAt)
-        const avgScore = completedLessons.length > 0 
-          ? Math.round(completedLessons.reduce((sum, p) => sum + p.overallScore, 0) / completedLessons.length)
-          : 0
-        
-        // Calculate engagement from lesson activity
-        const totalTimeSpent = progressData.reduce((sum, p) => sum + p.timeSpent, 0)
-        const lessonsStarted = progressData.length
-        const engagementScore = allLessons.length > 0 
-          ? Math.round((lessonsStarted / allLessons.length) * 50 + (completedLessons.length / Math.max(1, allLessons.length)) * 50)
-          : 50
+        const metrics = deriveStudentMetrics({
+          progress: progressData,
+          lessons: allLessons,
+          fallbackMastery: profile?.overall_mastery || 0,
+          fallbackEngagement: profile?.engagement_index || 50,
+        })
+
+        const masteryForDisplay = mastery.length > 0
+          ? mastery
+          : metrics.masteryByTopic.map((topic) => ({
+              conceptId: topic.conceptId,
+              conceptName: topic.conceptName,
+              masteryScore: topic.masteryScore,
+              checkpointsPassed: topic.checkpointsPassed,
+              totalCheckpoints: topic.totalCheckpoints,
+              lessonsCompleted: topic.lessonsCompleted,
+              totalLessons: topic.totalLessons,
+              lastActivity: topic.lastActivity,
+              needsAttention: topic.needsAttention,
+            }))
 
         const mapped: StudentDashboardData = {
           studentId: user.id,
           name: profile?.full_name || `${user.firstName || ""} ${user.lastName || ""}`.trim() || "Student",
           currentClass: "",
-          overallMasteryScore: avgScore || profile?.overall_mastery || 0,
-          engagementIndex: engagementScore || profile?.engagement_index || 50,
-          vark: varkMeta ? {
-            visual: varkMeta.scores?.visual || varkMeta.visual || 25,
-            auditory: varkMeta.scores?.auditory || varkMeta.auditory || 25,
-            reading: varkMeta.scores?.reading || varkMeta.reading || 25,
-            kinesthetic: varkMeta.scores?.kinesthetic || varkMeta.kinesthetic || 25,
-            dominantStyle: varkMeta.dominantStyle || "",
-            secondaryStyle: varkMeta.secondaryStyle || "",
+          overallMasteryScore: metrics.overallMastery,
+          engagementIndex: metrics.engagementIndex,
+          vark: resolvedVark ? {
+            visual: resolvedVark.scores?.visual || resolvedVark.visual || 25,
+            auditory: resolvedVark.scores?.auditory || resolvedVark.auditory || 25,
+            reading: resolvedVark.scores?.reading || resolvedVark.reading || 25,
+            kinesthetic: resolvedVark.scores?.kinesthetic || resolvedVark.kinesthetic || 25,
+            dominantStyle: resolvedVark.dominantStyle || resolvedVark.dominant_style || "",
+            secondaryStyle: resolvedVark.secondaryStyle || resolvedVark.secondary_style || "",
           } : {
             visual: 25, auditory: 25, reading: 25, kinesthetic: 25,
             dominantStyle: "", secondaryStyle: "",
           },
-          masteryByTopic: mastery.map(m => ({
+          masteryByTopic: masteryForDisplay.map(m => ({
             topicId: m.conceptId,
             topicName: m.conceptName,
             score: m.masteryScore,
+            assessmentCount: m.totalCheckpoints,
             trend: "stable" as const
           })),
           recentActivity: progressData.slice(0, 5).map(p => ({
             id: p.lessonId,
             type: "lesson" as const,
-            title: p.lessonTitle,
-            timestamp: p.lastAccessedAt,
-            details: p.completedAt ? `Completed with ${p.overallScore}%` : `In progress`
+            description: p.completedAt ? `${p.lessonTitle}: completed with ${p.overallScore}%` : `${p.lessonTitle}: in progress`,
+            timestamp: new Date(p.lastAccessedAt),
           })),
           classes: joinedClasses,
         }
 
+        const computedBadges = getStudentBadges({
+          studentId: user.id,
+          lessons: allLessons,
+          lessonProgress: progressData,
+          masteryData: masteryForDisplay,
+          dominantStyle: resolvedVark?.dominantStyle || resolvedVark?.dominant_style || "",
+        })
+
         setStudentData(mapped)
         setLessonProgress(progressData)
-        setMasteryData(mastery)
+        setMasteryData(masteryForDisplay)
+        setAllLessons(allLessons)
         setTotalLessons(allLessons.length)
+        setBadges(computedBadges)
+        await syncStudentBadges(user.id, computedBadges)
         setIsLoading(false)
       } catch (e) {
         console.warn("Error loading dashboard:", e)
@@ -208,6 +240,41 @@ export default function StudentDashboard() {
 
   const masteryStatus = getMasteryLevel(studentData.overallMasteryScore)
   const engagementStatus = getEngagementLevel(studentData.engagementIndex)
+  const achievementShareText = buildAchievementShareText({
+    studentName: studentData.name,
+    badges,
+    overallMastery: studentData.overallMasteryScore,
+  })
+
+  const openTweetComposer = async () => {
+    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(achievementShareText)}`
+    window.open(url, "_blank", "noopener,noreferrer")
+    setShareStatus("Tweet composer opened with your latest mastery highlight.")
+  }
+
+  const copyLinkedInSnippet = async () => {
+    await navigator.clipboard.writeText(achievementShareText)
+    window.open("https://www.linkedin.com/feed/", "_blank", "noopener,noreferrer")
+    setShareStatus("LinkedIn-ready snippet copied. Paste it into your new post.")
+  }
+
+  const handleShareBadges = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "AMEP Achievement",
+          text: achievementShareText,
+        })
+        setShareStatus("Achievement snippet shared.")
+        return
+      } catch {
+        // fall through to copy + tweet
+      }
+    }
+
+    await navigator.clipboard.writeText(achievementShareText)
+    await openTweetComposer()
+  }
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-900">
@@ -400,6 +467,8 @@ export default function StudentDashboard() {
 
               {/* Right Column - VARK & Activity */}
               <div className="space-y-6">
+                <MasteryBadges badges={badges} onShare={handleShareBadges} />
+
                 {/* VARK Profile */}
                 <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
                   <h2 className="font-semibold text-slate-900 dark:text-white mb-4">Your Learning Style</h2>
@@ -453,6 +522,62 @@ export default function StudentDashboard() {
                       </Link>
                     </div>
                   )}
+                </div>
+
+                <ProgressShareCard
+                  studentId={user.id}
+                  parentEmail={studentDetails?.parentEmail}
+                  parentName={studentDetails?.parentName}
+                  studentSnapshot={{
+                    studentName: studentData.name,
+                    overallMastery: studentData.overallMasteryScore,
+                    engagementLevel: studentData.engagementIndex,
+                    dominantStyle: studentData.vark.dominantStyle,
+                    masteryByTopic: studentData.masteryByTopic.map((topic) => ({
+                      topicName: topic.topicName,
+                      score: topic.score,
+                    })),
+                    badges: badges.filter((badge) => badge.earned).map((badge) => ({ name: badge.name })),
+                    recentActivity: studentData.recentActivity.map((activity) => ({
+                      description: activity.description,
+                      timestamp: activity.timestamp.toISOString(),
+                    })),
+                  }}
+                />
+
+                <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="font-semibold text-slate-900 dark:text-white">Achievement Social Sharer</h2>
+                      <p className="text-sm text-slate-500 mt-1">Generate a tweetable or LinkedIn-ready mastery update.</p>
+                    </div>
+                    <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">#AdaptiveMastery</span>
+                  </div>
+
+                  <div className="mt-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 p-4 text-sm text-slate-700 dark:text-slate-300">
+                    {achievementShareText}
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={openTweetComposer}
+                      className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      Share to X
+                    </button>
+                    <button
+                      type="button"
+                      onClick={copyLinkedInSnippet}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+                    >
+                      <Copy className="w-4 h-4" />
+                      Copy for LinkedIn
+                    </button>
+                  </div>
+
+                  {shareStatus && <p className="mt-3 text-sm text-emerald-600">{shareStatus}</p>}
                 </div>
 
                 {/* Recent Activity */}

@@ -5,6 +5,9 @@ import { useRequireAuth } from "@/hooks/use-auth"
 import { useSearchParams, useRouter } from "next/navigation"
 import { TeacherHeader } from "@/components/teacher/header-new"
 import { TeacherSidebar } from "@/components/teacher/sidebar-new"
+import { EngagementTrendChart } from "@/components/teacher/engagement-trend-chart"
+import { EngagementHeatmap } from "@/components/teacher/engagement-heatmap"
+import { CohortAnalyticsPanel } from "@/components/teacher/cohort-analytics-panel"
 import { supabase } from "@/lib/supabaseClient"
 import { 
   getTeacherDashboard, 
@@ -13,6 +16,7 @@ import {
   type Class
 } from "@/lib/data-service"
 import { getTeacherLessons, getClassLessonProgress, type Lesson } from "@/lib/lesson-service"
+import { exportTeacherAnalyticsCsv } from "@/lib/teacher-analytics"
 import {
   Users,
   TrendingUp,
@@ -275,6 +279,27 @@ function TeacherDashboardContent() {
     }
   }
 
+  const handleExportAnalytics = () => {
+    if (!dashboard) return
+
+    const csv = exportTeacherAnalyticsCsv({
+      engagementHeatmap: dashboard.engagementHeatmap,
+      engagementTrends: dashboard.engagementTrends,
+      varkDistribution: dashboard.cohortAnalytics.varkDistribution,
+      masteryBands: dashboard.cohortAnalytics.masteryBands,
+      classSummaries: dashboard.cohortAnalytics.classSummaries,
+      flaggedMoments: dashboard.cohortAnalytics.flaggedMoments,
+    })
+
+    const blob = new Blob([csv], { type: "text/csv" })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = `teacher-cohort-analytics-${new Date().toISOString().split("T")[0]}.csv`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
   if (authLoading || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-900">
@@ -409,6 +434,25 @@ function TeacherDashboardContent() {
                 <p className="text-sm text-slate-500">Need Attention</p>
               </div>
             </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+              <div className="xl:col-span-1">
+                <EngagementTrendChart data={dashboard?.engagementTrends || []} />
+              </div>
+              <div className="xl:col-span-2">
+                <EngagementHeatmap
+                  cells={dashboard?.engagementHeatmap || []}
+                  flaggedMoments={dashboard?.cohortAnalytics.flaggedMoments || []}
+                />
+              </div>
+            </div>
+
+            <CohortAnalyticsPanel
+              varkDistribution={dashboard?.cohortAnalytics.varkDistribution || []}
+              masteryBands={dashboard?.cohortAnalytics.masteryBands || []}
+              classSummaries={dashboard?.cohortAnalytics.classSummaries || []}
+              onExport={handleExportAnalytics}
+            />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Classes */}

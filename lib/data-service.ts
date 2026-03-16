@@ -12,6 +12,8 @@ import { calculateMasteryScore, type MasteryInputs } from "./intelligence/master
 import { calculateEngagementIndex, type EngagementInputs } from "./intelligence/engagementEngine"
 import { updateVARKProfile, type VARKProfile } from "./intelligence/varkEngine"
 import { getAllStudentProgress, getPublishedLessons } from "./lesson-service"
+import { deriveStudentMetrics } from "./student-metrics"
+import { buildTeacherAnalyticsSnapshot, type EngagementHeatmapCell } from "./teacher-analytics"
 import { ReactNode } from "react"
 
 // Utility: normalize date strings like 'dd/mm/yyyy' to ISO string
@@ -22,6 +24,10 @@ function normalizeDateInput(d?: string | null) {
   if (m) return `${m[3]}-${m[2]}-${m[1]}T00:00:00Z`
   return d
 }
+
+const isUuid = (value: string | undefined | null) =>
+  typeof value === "string" &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
 
 // ============================================================================
 // Types
@@ -230,7 +236,7 @@ export async function getStudentData(userId: string): Promise<StudentData | null
     try {
       await supabase.from('student_profiles').upsert([
         { user_id: userId, updated_at: new Date().toISOString() }
-      ], { onConflict: ['user_id'] })
+      ], { onConflict: 'user_id' })
     } catch (upsertErr) {
       // ignore upsert errors here; we'll continue to read existing data
       console.warn('ensureStudentProfile upsert failed', upsertErr)
@@ -323,7 +329,7 @@ export async function updateStudentVARK(userId: string, varkProfile: VARKProfile
       id: userId,
       vark_profile: varkProfile,
       updated_at: new Date().toISOString(),
-    }, { onConflict: ['id'] })
+    }, { onConflict: 'id' })
 
     return true
   } catch (e) {
@@ -562,32 +568,36 @@ export async function getClassStudents(classCode: string): Promise<ClassStudent[
   // Helper to enrich student data with their profile info and real progress
   const enrichStudentData = async (students: ClassStudent[]): Promise<ClassStudent[]> => {
     const enriched: ClassStudent[] = []
+    const publishedLessons = await getPublishedLessons()
     
     for (const student of students) {
       // Get student's actual lesson progress to compute real mastery/engagement
       try {
-        const progressData = await getAllStudentProgress(student.id)
-        const completedLessons = progressData.filter(p => p.completedAt)
-        
-        // Calculate real mastery from completed lessons
-        if (completedLessons.length > 0) {
-          const avgScore = Math.round(
-            completedLessons.reduce((sum, p) => sum + (p.overallScore || 0), 0) / completedLessons.length
-          )
-          student.masteryScore = avgScore
+        let progressData = await getAllStudentProgress(student.id)
+
+        if (progressData.length === 0 && isUuid(student.id)) {
+          const { data: profileRow } = await supabase
+            .from("student_profiles")
+            .select("user_id")
+            .eq("id", student.id)
+            .maybeSingle()
+
+          if (profileRow?.user_id && profileRow.user_id !== student.id) {
+            progressData = await getAllStudentProgress(profileRow.user_id)
+          }
         }
-        
-        // Calculate real engagement from lesson activity
-        const allLessons = await getPublishedLessons()
-        const lessonsStarted = progressData.length
-        if (allLessons.length > 0) {
-          const engagementScore = Math.round(
-            (lessonsStarted / allLessons.length) * 50 + 
-            (completedLessons.length / Math.max(1, allLessons.length)) * 50
-          )
-          student.engagementLevel = engagementScore
-          student.engagementStatus = getEngagementStatus(engagementScore)
-        }
+
+        const metrics = deriveStudentMetrics({
+          progress: progressData,
+          lessons: publishedLessons,
+          fallbackMastery: student.masteryScore,
+          fallbackEngagement: student.engagementLevel,
+        })
+
+        student.masteryScore = metrics.overallMastery
+        student.engagementLevel = metrics.engagementIndex
+        student.engagementStatus = getEngagementStatus(metrics.engagementIndex)
+        student.lastActive = metrics.lastActivity || student.lastActive
         
         // Update flags based on real data
         student.flags = {
@@ -1306,6 +1316,20 @@ export interface TeacherDashboard {
   averageEngagement: number
   learningStyleDistribution: { name: string; value: number }[]
   engagementTrends: { date: string; avgEngagement: number; avgMastery: number }[]
+  engagementHeatmap: EngagementHeatmapCell[]
+  cohortAnalytics: {
+    varkDistribution: Array<{ name: string; value: number; count: number }>
+    masteryBands: Array<{ name: string; value: number; count: number }>
+    classSummaries: Array<{
+      classCode: string
+      className: string
+      students: number
+      avgMastery: number
+      avgEngagement: number
+      atRiskStudents: number
+    }>
+    flaggedMoments: Array<{ label: string; activeLearners: number; disengagementScore: number }>
+  }
   alerts: {
     lowMasteryStudents: ClassStudent[]
     lowEngagementStudents: ClassStudent[]
@@ -1316,6 +1340,7 @@ export async function getTeacherDashboard(teacherId: string): Promise<TeacherDas
   const classes = await getTeacherClasses(teacherId)
   
   let allStudents: ClassStudent[] = []
+  const classSummaries: TeacherDashboard["cohortAnalytics"]["classSummaries"] = []
   // Update each class with actual student count and real mastery/engagement averages
   for (const cls of classes) {
     const students = await getClassStudents(cls.classCode)
@@ -1332,6 +1357,14 @@ export async function getTeacherDashboard(teacherId: string): Promise<TeacherDas
     }
     
     allStudents = [...allStudents, ...students]
+    classSummaries.push({
+      classCode: cls.classCode,
+      className: cls.className,
+      students: students.length,
+      avgMastery: cls.averageMastery || 0,
+      avgEngagement: cls.averageEngagement || 0,
+      atRiskStudents: students.filter((student) => student.flags.needsSupport).length,
+    })
   }
 
   // Dedupe students by email when available (case-insensitive), preferring
@@ -1408,6 +1441,12 @@ export async function getTeacherDashboard(teacherId: string): Promise<TeacherDas
     department = meta.department || ""
   } catch {}
 
+  const analytics = await buildTeacherAnalyticsSnapshot({
+    teacherId,
+    classes,
+    students: uniqueStudents,
+  })
+
   return {
     teacherId,
     name,
@@ -1417,21 +1456,19 @@ export async function getTeacherDashboard(teacherId: string): Promise<TeacherDas
     averageMastery: avgMastery,
     averageEngagement: avgEngagement,
     learningStyleDistribution: distribution,
-    engagementTrends: generateTrendData(avgEngagement, avgMastery),
+    engagementTrends: analytics.engagementTrends,
+    engagementHeatmap: analytics.engagementHeatmap,
+    cohortAnalytics: {
+      varkDistribution: analytics.varkDistribution,
+      masteryBands: analytics.masteryBands,
+      classSummaries,
+      flaggedMoments: analytics.flaggedMoments,
+    },
     alerts: {
       lowMasteryStudents: uniqueStudents.filter(s => s.flags.lowMastery),
       lowEngagementStudents: uniqueStudents.filter(s => s.flags.lowEngagement),
     },
   }
-}
-
-function generateTrendData(engagement: number, mastery: number) {
-  const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-  return days.map((date, i) => ({
-    date,
-    avgEngagement: Math.max(0, Math.min(100, engagement + (Math.random() - 0.5) * 10)),
-    avgMastery: Math.max(0, Math.min(100, mastery + (Math.random() - 0.5) * 8)),
-  }))
 }
 
 // ============================================================================

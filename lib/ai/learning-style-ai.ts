@@ -47,16 +47,19 @@ export interface LabResource {
 
 export interface StudentContext {
   studentName: string
+  studentId?: string
   dominantLearningStyle: string
   secondaryStyle?: string
   currentTopic?: string
+  conceptId?: string
   masteryLevel: number
   grade?: number
+  feedbackSummary?: string
   conversationHistory?: { role: 'user' | 'assistant'; content: string }[]
 }
 
 // Initialize OpenAI client (works with both OpenAI and Groq)
-function getOpenAIClient() {
+export function getOpenAIClient() {
   // Prefer Groq for faster responses, fallback to OpenAI
   if (process.env.GROQ_API_KEY) {
     return new OpenAI({
@@ -70,7 +73,7 @@ function getOpenAIClient() {
 }
 
 // Get the appropriate model based on the client
-function getModel() {
+export function getModel() {
   if (process.env.GROQ_API_KEY) {
     return 'llama-3.3-70b-versatile'
   }
@@ -103,7 +106,8 @@ Student: ${context.studentName}
 Current Mastery Level: ${context.masteryLevel}%
 Topic Focus: ${context.currentTopic || 'General'}
 
-Respond in a friendly but educational tone.`
+Respond in a friendly but educational tone.
+${context.feedbackSummary ? `\nModule feedback guidance: ${context.feedbackSummary}` : ""}`
 
   try {
     const historyMessages = (context.conversationHistory || []).map(h => ({ role: h.role, content: h.content }))
@@ -233,7 +237,8 @@ IMPORTANT:
 
 Student: ${context.studentName}
 Mastery Level: ${context.masteryLevel}%
-Topic: ${context.currentTopic || 'General'}`
+Topic: ${context.currentTopic || 'General'}
+${context.feedbackSummary ? `\nModule feedback guidance: ${context.feedbackSummary}` : ""}`
 
     : `You are a helpful AI tutor who explains concepts using visual diagrams and structured text.
 
@@ -280,7 +285,8 @@ Student: ${context.studentName}
 Mastery Level: ${context.masteryLevel}%
 Topic: ${context.currentTopic || 'General'}
 
-Keep diagrams clear with 8-15 nodes for good readability.`
+Keep diagrams clear with 8-15 nodes for good readability.
+${context.feedbackSummary ? `\nModule feedback guidance: ${context.feedbackSummary}` : ""}`
 
   try {
     // Build messages including conversation history if available
@@ -394,7 +400,8 @@ Student: ${context.studentName}
 Mastery Level: ${context.masteryLevel}%
 Topic: ${context.currentTopic || 'General'}
 
-Remember: Speak naturally and clearly like a friendly teacher!`
+Remember: Speak naturally and clearly like a friendly teacher!
+${context.feedbackSummary ? `\nModule feedback guidance: ${context.feedbackSummary}` : ""}`
 
   try {
     const historyMessages = (context.conversationHistory || []).map(h => ({ role: h.role, content: h.content }))
@@ -471,7 +478,8 @@ FORMAT your response like this:
 
 Student: ${context.studentName}
 Mastery Level: ${context.masteryLevel}%
-Topic: ${context.currentTopic || 'General'}`
+Topic: ${context.currentTopic || 'General'}
+${context.feedbackSummary ? `\nModule feedback guidance: ${context.feedbackSummary}` : ""}`
 
   try {
     const historyMessages = (context.conversationHistory || []).map(h => ({ role: h.role, content: h.content }))

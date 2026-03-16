@@ -1,16 +1,14 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
+import { PwaProvider } from "@/components/pwa-provider"
 import "./globals.css"
-
-const _geist = Geist({ subsets: ["latin"] })
-const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
   title: "AdaptIQ - Adaptive Learning Platform",
   description: "Personalized adaptive learning with AI-assisted education",
   generator: "v0.app",
+  manifest: "/manifest.webmanifest",
   icons: {
     icon: [
       {
@@ -38,6 +36,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`font-sans antialiased`}>
+        <PwaProvider />
         {children}
         <Analytics />
       </body>

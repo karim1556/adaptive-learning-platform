@@ -8,6 +8,7 @@
  */
 
 import { supabase } from "./supabaseClient"
+import { deriveStudentMetrics } from "./student-metrics"
 
 // Simple UUID detector to avoid sending numeric/mock ids to PostgREST
 const isUuid = (s: string | undefined | null) => typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
@@ -148,6 +149,7 @@ const STORAGE_KEYS = {
   LESSONS: "adaptiq_lessons_v1",
   PROGRESS: "adaptiq_lesson_progress_v1",
   MASTERY: "adaptiq_student_mastery_v1",
+  PENDING_PROGRESS_SYNC: "adaptiq_pending_progress_sync_v1",
 } as const
 
 // ============================================================================
@@ -179,6 +181,81 @@ function generateId(): string {
 
 function generateClassCode(): string {
   return Math.random().toString(36).slice(2, 8).toUpperCase()
+}
+
+type PendingProgressSyncItem = {
+  key: string
+  payload: Record<string, any>
+  queuedAt: string
+}
+
+function getPendingProgressSyncQueue(): PendingProgressSyncItem[] {
+  return getFromStorage<PendingProgressSyncItem[]>(STORAGE_KEYS.PENDING_PROGRESS_SYNC) || []
+}
+
+function setPendingProgressSyncQueue(queue: PendingProgressSyncItem[]) {
+  setToStorage(STORAGE_KEYS.PENDING_PROGRESS_SYNC, queue.slice(-100))
+}
+
+function buildProgressPayload(progress: LessonProgress, lastAccessedAt: string) {
+  return {
+    student_id: progress.studentId,
+    lesson_id: progress.lessonId,
+    lesson_title: progress.lessonTitle,
+    current_block_index: progress.currentBlockIndex,
+    completed_blocks: progress.completedBlocks,
+    checkpoint_attempts: progress.checkpointAttempts,
+    started_at: progress.startedAt,
+    last_accessed_at: lastAccessedAt,
+    completed_at: progress.completedAt,
+    overall_score: progress.overallScore,
+    time_spent: progress.timeSpent,
+  }
+}
+
+function enqueueProgressSync(payload: Record<string, any>) {
+  if (typeof window === "undefined") return
+
+  const queue = getPendingProgressSyncQueue().filter(
+    (item) => item.key !== `${payload.student_id}:${payload.lesson_id}`,
+  )
+
+  queue.push({
+    key: `${payload.student_id}:${payload.lesson_id}`,
+    payload,
+    queuedAt: new Date().toISOString(),
+  })
+
+  setPendingProgressSyncQueue(queue)
+}
+
+export async function flushPendingProgressSync(): Promise<void> {
+  if (typeof window === "undefined") return
+  if (typeof navigator !== "undefined" && !navigator.onLine) return
+
+  const queue = getPendingProgressSyncQueue()
+  if (queue.length === 0) return
+
+  const remaining: PendingProgressSyncItem[] = []
+
+  for (const item of queue) {
+    try {
+      const { error } = await supabase.from("lesson_progress").upsert(item.payload)
+      if (error) {
+        remaining.push(item)
+      }
+    } catch {
+      remaining.push(item)
+    }
+  }
+
+  setPendingProgressSyncQueue(remaining)
+}
+
+function cachePublishedLessons(lessons: Lesson[]) {
+  const store = getFromStorage<Record<string, Lesson[]>>(STORAGE_KEYS.LESSONS) || {}
+  store.__published__ = lessons
+  setToStorage(STORAGE_KEYS.LESSONS, store)
 }
 
 export async function createLesson(
@@ -279,7 +356,7 @@ export async function getLesson(lessonId: string): Promise<Lesson | null> {
       .maybeSingle()
 
     if (data) {
-      return {
+      const lesson = {
         id: data.id,
         title: data.title,
         description: data.description,
@@ -296,6 +373,16 @@ export async function getLesson(lessonId: string): Promise<Lesson | null> {
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       }
+
+      const store = getFromStorage<Record<string, Lesson[]>>(STORAGE_KEYS.LESSONS) || {}
+      const bucket = store[data.teacher_id] || []
+      const existingIndex = bucket.findIndex((item) => item.id === lesson.id)
+      if (existingIndex >= 0) bucket[existingIndex] = lesson
+      else bucket.push(lesson)
+      store[data.teacher_id] = bucket
+      setToStorage(STORAGE_KEYS.LESSONS, store)
+
+      return lesson
     }
   } catch (e) {
     console.warn("Supabase fetch failed:", e)
@@ -324,7 +411,7 @@ export async function getPublishedLessons(classId?: string): Promise<Lesson[]> {
     const { data } = await query.order("created_at", { ascending: false })
 
     if (data && data.length > 0) {
-      return data.map(l => ({
+      const lessons = data.map(l => ({
         id: l.id,
         title: l.title,
         description: l.description,
@@ -341,6 +428,9 @@ export async function getPublishedLessons(classId?: string): Promise<Lesson[]> {
         createdAt: l.created_at,
         updatedAt: l.updated_at,
       }))
+
+      cachePublishedLessons(lessons)
+      return lessons
     }
   } catch (e) {
     console.warn("Supabase fetch failed:", e)
@@ -348,7 +438,7 @@ export async function getPublishedLessons(classId?: string): Promise<Lesson[]> {
 
   // Fallback: get all published lessons from localStorage
   const store = getFromStorage<Record<string, Lesson[]>>(STORAGE_KEYS.LESSONS) || {}
-  const allLessons = Object.values(store).flat()
+  const allLessons = Array.from(new Map(Object.values(store).flat().map((lesson) => [lesson.id, lesson])).values())
   const published = allLessons.filter(l => l.published && (!classId || l.classId === classId))
   return published
 }
@@ -495,22 +585,21 @@ export async function saveProgress(progress: LessonProgress): Promise<void> {
     progress.overallScore = Math.round(totalPercentage / progress.checkpointAttempts.length)
   }
 
+  const payload = buildProgressPayload(progress, now)
+
   try {
-    await supabase.from("lesson_progress").upsert({
-      student_id: progress.studentId,
-      lesson_id: progress.lessonId,
-      lesson_title: progress.lessonTitle,
-      current_block_index: progress.currentBlockIndex,
-      completed_blocks: progress.completedBlocks,
-      checkpoint_attempts: progress.checkpointAttempts,
-      started_at: progress.startedAt,
-      last_accessed_at: now,
-      completed_at: progress.completedAt,
-      overall_score: progress.overallScore,
-      time_spent: progress.timeSpent,
-    })
+    const shouldQueue = typeof navigator !== "undefined" && !navigator.onLine
+    if (shouldQueue) {
+      enqueueProgressSync(payload)
+    } else {
+      const { error } = await supabase.from("lesson_progress").upsert(payload)
+      if (error) {
+        enqueueProgressSync(payload)
+      }
+    }
   } catch (e) {
     console.warn("Supabase upsert failed:", e)
+    enqueueProgressSync(payload)
   }
 
   // Always save to localStorage
@@ -647,97 +736,140 @@ export async function completeLesson(progress: LessonProgress): Promise<void> {
 
 export async function updateStudentMastery(studentId: string): Promise<void> {
   const allProgress = await getAllStudentProgress(studentId)
-  
-  // Group by concept with lesson metadata
-  const conceptData: Record<string, { 
-    conceptName: string
-    scores: number[]
-    checkpoints: number[]
-    lessons: number[]
-    lastActivity: string
-  }> = {}
-  
-  for (const progress of allProgress) {
-    const lesson = await getLesson(progress.lessonId)
-    if (!lesson) continue
-    
-    const conceptId = lesson.conceptId
-    if (!conceptData[conceptId]) {
-      conceptData[conceptId] = { 
-        conceptName: lesson.conceptName || conceptId.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
-        scores: [], 
-        checkpoints: [], 
-        lessons: [],
-        lastActivity: progress.lastAccessedAt
-      }
-    }
-    
-    // Update last activity
-    if (progress.lastAccessedAt > conceptData[conceptId].lastActivity) {
-      conceptData[conceptId].lastActivity = progress.lastAccessedAt
-    }
-    
-    // Add lesson score - use checkpoint attempts if available, otherwise use overallScore for completed lessons
-    if (progress.checkpointAttempts.length > 0) {
-      // Has checkpoints - add each checkpoint score
-      for (const attempt of progress.checkpointAttempts) {
-        conceptData[conceptId].scores.push(attempt.percentage)
-        conceptData[conceptId].checkpoints.push(attempt.percentage >= 70 ? 1 : 0)
-      }
-    } else if (progress.completedAt) {
-      // No checkpoints but completed - count as 100%
-      conceptData[conceptId].scores.push(progress.overallScore || 100)
-    }
-    
-    // Track lesson completion
-    if (progress.completedAt) {
-      conceptData[conceptId].lessons.push(1)
-    } else {
-      conceptData[conceptId].lessons.push(0)
-    }
-  }
-
-  // Calculate mastery per concept
-  const masteryData: StudentMasteryData[] = []
-  
-  for (const [conceptId, data] of Object.entries(conceptData)) {
-    const avgScore = data.scores.length > 0 
-      ? Math.round(data.scores.reduce((a, b) => a + b, 0) / data.scores.length)
-      : 0
-    const checkpointsPassed = data.checkpoints.filter(c => c === 1).length
-    const lessonsCompleted = data.lessons.filter(l => l === 1).length
-
-    masteryData.push({
-      conceptId,
-      conceptName: data.conceptName,
-      masteryScore: avgScore,
-      checkpointsPassed,
-      totalCheckpoints: data.checkpoints.length,
-      lessonsCompleted,
-      totalLessons: data.lessons.length,
-      lastActivity: data.lastActivity,
-      needsAttention: avgScore < 60 || (data.checkpoints.length > 0 && checkpointsPassed / data.checkpoints.length < 0.5),
-    })
-  }
+  const relatedLessons = await Promise.all(allProgress.map((progress) => getLesson(progress.lessonId)))
+  const availableLessons = await getPublishedLessons()
+  const metrics = deriveStudentMetrics({
+    progress: allProgress,
+    lessons: [
+      ...availableLessons,
+      ...relatedLessons.filter((lesson): lesson is Lesson => Boolean(lesson)),
+    ].filter((lesson, index, list) => list.findIndex((candidate) => candidate.id === lesson.id) === index),
+  })
+  const masteryData: StudentMasteryData[] = metrics.masteryByTopic.map((topic) => ({
+    conceptId: topic.conceptId,
+    conceptName: topic.conceptName,
+    masteryScore: topic.masteryScore,
+    checkpointsPassed: topic.checkpointsPassed,
+    totalCheckpoints: topic.totalCheckpoints,
+    lessonsCompleted: topic.lessonsCompleted,
+    totalLessons: topic.totalLessons,
+    lastActivity: topic.lastActivity,
+    needsAttention: topic.needsAttention,
+  }))
 
   // Save mastery data
   const store = getFromStorage<Record<string, StudentMasteryData[]>>(STORAGE_KEYS.MASTERY) || {}
   store[studentId] = masteryData
   setToStorage(STORAGE_KEYS.MASTERY, store)
 
-  // Also update the main student profile
-  try {
-    const overallMastery = masteryData.length > 0
-      ? Math.round(masteryData.reduce((sum, m) => sum + m.masteryScore, 0) / masteryData.length)
-      : 0
+  const now = new Date().toISOString()
 
+  let profileId = studentId
+  try {
+    const { data: existingProfile } = await supabase
+      .from("student_profiles")
+      .select("id")
+      .eq("user_id", studentId)
+      .maybeSingle()
+
+    if (existingProfile?.id) {
+      profileId = existingProfile.id
+    } else if (isUuid(studentId)) {
+      const { data: createdProfile } = await supabase
+        .from("student_profiles")
+        .upsert(
+          {
+            user_id: studentId,
+            enrollment_date: now,
+            overall_mastery_score: metrics.overallMastery,
+            engagement_index: metrics.engagementIndex,
+            updated_at: now,
+          },
+          { onConflict: "user_id", ignoreDuplicates: false },
+        )
+        .select("id")
+        .maybeSingle()
+
+      if (createdProfile?.id) {
+        profileId = createdProfile.id
+      }
+    }
+  } catch (error) {
+    console.warn("Could not resolve student profile for mastery sync:", error)
+  }
+
+  try {
     await supabase.from("profiles").upsert({
       id: studentId,
-      overall_mastery: overallMastery,
-      updated_at: new Date().toISOString(),
+      overall_mastery: metrics.overallMastery,
+      engagement_index: metrics.engagementIndex,
+      updated_at: now,
     }, { onConflict: 'id' })
   } catch (e) {
     console.warn("Could not update profile mastery:", e)
+  }
+
+  try {
+    if (profileId && isUuid(profileId)) {
+      await supabase.from("student_profiles").upsert(
+        {
+          id: profileId,
+          user_id: studentId,
+          overall_mastery_score: metrics.overallMastery,
+          engagement_index: metrics.engagementIndex,
+          updated_at: now,
+        },
+        { onConflict: "id" },
+      )
+    }
+  } catch (error) {
+    console.warn("Could not sync student_profiles mastery:", error)
+  }
+
+  try {
+    if (profileId && isUuid(profileId)) {
+      const rows = masteryData
+        .filter((topic) => isUuid(topic.conceptId))
+        .map((topic) => ({
+          student_id: profileId,
+          concept_id: topic.conceptId,
+          mastery_score: topic.masteryScore,
+          assessment_count: topic.totalCheckpoints,
+          checkpoints_passed: topic.checkpointsPassed,
+          total_checkpoints: topic.totalCheckpoints,
+          lessons_completed: topic.lessonsCompleted,
+          total_lessons: topic.totalLessons,
+          last_activity: topic.lastActivity,
+          last_updated: now,
+        }))
+
+      if (rows.length > 0) {
+        const { error } = await supabase.from("mastery_records").upsert(rows, { onConflict: "student_id,concept_id" })
+        if (error) throw error
+      }
+    }
+  } catch (error) {
+    console.warn("Could not sync mastery records:", error)
+  }
+
+  try {
+    const studentIdsToUpdate = [studentId]
+    if (profileId && profileId !== studentId) {
+      studentIdsToUpdate.push(profileId)
+    }
+
+    const { error } = await supabase
+      .from("class_students")
+      .update({
+        mastery_average: metrics.overallMastery,
+        engagement_level: metrics.engagementIndex,
+        last_active: metrics.lastActivity || now,
+      })
+      .in("student_id", studentIdsToUpdate)
+
+    if (error) throw error
+  } catch (error) {
+    console.warn("Could not sync class student metrics:", error)
   }
 }
 
@@ -746,7 +878,6 @@ export async function getStudentMastery(studentId: string): Promise<StudentMaste
 
   // Map auth user id -> student_profiles.id if necessary
   let profileId = studentId
-  let createdProfile = false
   try {
     const { data: sp, error: spError } = await supabase
       .from("student_profiles")
@@ -779,7 +910,6 @@ export async function getStudentMastery(studentId: string): Promise<StudentMaste
         }
         if (newSp && (newSp as any).id) {
           profileId = (newSp as any).id
-          createdProfile = true
           console.debug("[getStudentMastery] Upserted student_profile for user, id:", profileId)
         } else {
           console.debug("[getStudentMastery] Student_profile not found and could not be upserted; will use supplied id:", studentId)
@@ -821,48 +951,6 @@ export async function getStudentMastery(studentId: string): Promise<StudentMaste
       console.debug("[getStudentMastery] Returning Supabase data:", masteryData)
       return masteryData
     }
-    // If we created a new profile and there are no mastery rows yet, populate sample mastery for this profile
-    if ((createdProfile || false) && (!masteryRecords || masteryRecords.length === 0)) {
-      try {
-        console.debug("[getStudentMastery] Populating sample mastery for new profile:", profileId)
-        // Fetch up to 12 concept ids
-        const { data: concepts } = await supabase.from("learning_concepts").select("id").limit(12)
-        const rows: any[] = (concepts || []).map((c: any) => ({
-          student_id: profileId,
-          concept_id: c.id,
-          mastery_score: Math.floor(30 + Math.random() * 50),
-          checkpoints_passed: Math.floor(Math.random() * 3),
-          total_checkpoints: 3,
-          lessons_completed: Math.random() < 0.6 ? 1 : 0,
-          total_lessons: 1,
-          last_activity: new Date().toISOString()
-        }))
-        if (rows.length > 0) {
-          const { error: insertErr } = await supabase.from("mastery_records").insert(rows)
-          if (insertErr) console.debug("[getStudentMastery] Error inserting sample mastery:", insertErr)
-          else console.debug("[getStudentMastery] Inserted sample mastery rows for profile:", profileId)
-          // Re-query the mastery records for this profile
-          const { data: newRecords } = await supabase.from("mastery_records").select(`*, learning_concepts(id, name, category)`).eq("student_id", profileId)
-          if (newRecords && newRecords.length > 0) {
-            const masteryData: StudentMasteryData[] = newRecords.map((record: any) => ({
-              conceptId: record.concept_id,
-              conceptName: record.learning_concepts?.name || `Concept ${record.concept_id}`,
-              masteryScore: record.mastery_score || 0,
-              checkpointsPassed: record.checkpoints_passed || 0,
-              totalCheckpoints: record.total_checkpoints || 0,
-              lessonsCompleted: record.lessons_completed || 0,
-              totalLessons: record.total_lessons || 1,
-              lastActivity: record.last_activity || new Date().toISOString(),
-              needsAttention: (record.mastery_score || 0) < 70
-            }))
-            console.debug("[getStudentMastery] Returning newly populated Supabase data:", masteryData)
-            return masteryData
-          }
-        }
-      } catch (e) {
-        console.debug("[getStudentMastery] Exception populating sample mastery:", e)
-      }
-    }
   } catch (e) {
     console.error("[getStudentMastery] Exception fetching from Supabase:", e)
   }
@@ -870,6 +958,31 @@ export async function getStudentMastery(studentId: string): Promise<StudentMaste
   // Fallback: try to calculate from progress and localStorage
   console.debug("[getStudentMastery] No Supabase data, updating from progress...")
   await updateStudentMastery(studentId)
+
+  try {
+    if (profileId && isUuid(profileId)) {
+      const { data: refreshedRecords } = await supabase
+        .from("mastery_records")
+        .select(`*, learning_concepts(id, name, category)`)
+        .eq("student_id", profileId)
+
+      if (refreshedRecords && refreshedRecords.length > 0) {
+        return refreshedRecords.map((record: any) => ({
+          conceptId: record.concept_id,
+          conceptName: record.learning_concepts?.name || `Concept ${record.concept_id}`,
+          masteryScore: record.mastery_score || 0,
+          checkpointsPassed: record.checkpoints_passed || 0,
+          totalCheckpoints: record.total_checkpoints || 0,
+          lessonsCompleted: record.lessons_completed || 0,
+          totalLessons: record.total_lessons || 1,
+          lastActivity: record.last_activity || new Date().toISOString(),
+          needsAttention: (record.mastery_score || 0) < 70,
+        }))
+      }
+    }
+  } catch (error) {
+    console.debug("[getStudentMastery] Exception refreshing synced mastery:", error)
+  }
 
   const store = getFromStorage<Record<string, StudentMasteryData[]>>(STORAGE_KEYS.MASTERY) || {}
   const localData = store[studentId] || []

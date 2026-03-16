@@ -3,9 +3,12 @@
 import { useState, useEffect, useCallback } from "react"
 import { useRequireAuth } from "@/hooks/use-auth"
 import { useRouter, useParams } from "next/navigation"
+import { supabase } from "@/lib/supabaseClient"
 import { StudentHeader } from "@/components/student/header"
 import { StudentSidebar } from "@/components/student/sidebar"
 import { VideoWithCheckpoints } from "@/components/student/video-with-checkpoints"
+import { ModuleFeedbackSurvey } from "@/components/student/module-feedback-survey"
+import { LabCards } from "@/components/student/lab-cards"
 import { 
   getLesson,
   getStudentProgress,
@@ -39,7 +42,8 @@ import {
   Trophy,
   Target,
   AlertCircle,
-  RotateCcw
+  RotateCcw,
+  WifiOff
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -74,6 +78,12 @@ export default function LessonViewerPage() {
   // Content block timer
   const [blockStartTime, setBlockStartTime] = useState<number>(Date.now())
   const [timeSpent, setTimeSpent] = useState(0)
+  const [studentStyles, setStudentStyles] = useState<{ dominantStyle?: string; secondaryStyle?: string }>({})
+  const [resourceRecommendations, setResourceRecommendations] = useState<any[]>([])
+  const [resourceLoading, setResourceLoading] = useState(false)
+  const [isOffline, setIsOffline] = useState(false)
+  const [feedbackRefreshCount, setFeedbackRefreshCount] = useState(0)
+  const lessonCompleted = Boolean(progress?.completedAt)
 
   useEffect(() => {
     if (!user || !lessonId) return
@@ -88,6 +98,22 @@ export default function LessonViewerPage() {
     return () => clearInterval(interval)
   }, [blockStartTime])
 
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    setIsOffline(!navigator.onLine)
+    const handleOnline = () => setIsOffline(false)
+    const handleOffline = () => setIsOffline(true)
+
+    window.addEventListener("online", handleOnline)
+    window.addEventListener("offline", handleOffline)
+
+    return () => {
+      window.removeEventListener("online", handleOnline)
+      window.removeEventListener("offline", handleOffline)
+    }
+  }, [])
+
   const loadLesson = async () => {
     if (!user) return
     
@@ -97,6 +123,17 @@ export default function LessonViewerPage() {
       return
     }
     setLesson(lessonData)
+
+    try {
+      const { data: authData } = await supabase.auth.getUser()
+      const meta = (authData?.user?.user_metadata || {}) as any
+      setStudentStyles({
+        dominantStyle: meta?.varkProfile?.dominantStyle?.toLowerCase(),
+        secondaryStyle: meta?.varkProfile?.secondaryStyle?.toLowerCase(),
+      })
+    } catch {
+      setStudentStyles({})
+    }
 
     // Get or start progress
     let progressData = await getStudentProgress(user.id, lessonId)
@@ -118,6 +155,50 @@ export default function LessonViewerPage() {
     setIsLoading(false)
     setBlockStartTime(Date.now())
   }
+
+  useEffect(() => {
+    if (!lessonCompleted || !lesson) return
+
+    let cancelled = false
+    setResourceLoading(true)
+
+    fetch("/api/ai/resource-linker", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        topic: lesson.conceptName || lesson.title,
+        dominantStyle: studentStyles.dominantStyle || lesson.learningMode,
+        secondaryStyle: studentStyles.secondaryStyle,
+        masteryLevel: progress?.overallScore || 0,
+      }),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (cancelled) return
+        setResourceRecommendations(data?.resources || [])
+      })
+      .catch((error) => {
+        console.error("Failed to load resource recommendations:", error)
+        if (!cancelled) setResourceRecommendations([])
+      })
+      .finally(() => {
+        if (!cancelled) setResourceLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    lessonCompleted,
+    lesson?.id,
+    lesson?.conceptName,
+    lesson?.learningMode,
+    lesson?.title,
+    progress?.overallScore,
+    studentStyles.dominantStyle,
+    studentStyles.secondaryStyle,
+    feedbackRefreshCount,
+  ])
 
   const isBlockCompleted = useCallback((blockId: string) => {
     return progress?.completedBlocks.includes(blockId) || false
@@ -241,7 +322,7 @@ export default function LessonViewerPage() {
 
   const vark = VARK_OPTIONS.find(v => v.id === lesson.learningMode)
   const overallProgress = Math.round(((safeBlockIndex + (checkpointResult || isBlockCompleted(currentBlock?.id || "") ? 1 : 0)) / lesson.blocks.length) * 100)
-  const isComplete = !!progress?.completedAt
+  const isComplete = lessonCompleted
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-900">
@@ -259,11 +340,19 @@ export default function LessonViewerPage() {
                   <ArrowLeft className="w-4 h-4 mr-1" />
                   Back to Lessons
                 </Button>
-                {isComplete && (
-                  <span className="px-3 py-1 text-sm font-medium bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center gap-1">
-                    <Trophy className="w-4 h-4" />
-                    Completed - Score: {Math.round(progress?.overallScore || 0)}%
+                {isOffline && (
+                  <span className="px-3 py-1 text-sm font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-full flex items-center gap-1">
+                    <WifiOff className="w-4 h-4" />
+                    Offline mode: answers will sync later
                   </span>
+                )}
+                {isComplete && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="px-3 py-1 text-sm font-medium bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center gap-1">
+                      <Trophy className="w-4 h-4" />
+                      Completed - Score: {Math.round(progress?.overallScore || 0)}%
+                    </span>
+                  </div>
                 )}
               </div>
 
@@ -336,6 +425,55 @@ export default function LessonViewerPage() {
           {/* Content Area */}
           <div className="p-6">
             <div className="max-w-4xl mx-auto">
+              {isComplete && (
+                <div className="space-y-6 mb-6">
+                  <div className="rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-700 p-6 text-white">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-sm text-blue-100">Lesson completed</p>
+                        <h2 className="text-2xl font-bold mt-1">Nice work on {lesson.title}</h2>
+                        <p className="text-blue-100 mt-2">
+                          You finished this module with {Math.round(progress?.overallScore || 0)}% mastery.
+                          Keep the momentum going with a quick rating and a few free follow-up resources.
+                        </p>
+                      </div>
+                      <div className="hidden sm:flex w-16 h-16 rounded-2xl bg-white/15 items-center justify-center">
+                        <Trophy className="w-8 h-8 text-white" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <ModuleFeedbackSurvey
+                    studentId={user.id}
+                    lessonId={lesson.id}
+                    conceptId={lesson.conceptId}
+                    conceptName={lesson.conceptName || lesson.title}
+                    learningMode={lesson.learningMode}
+                    onSubmitted={() => setFeedbackRefreshCount((count) => count + 1)}
+                  />
+
+                  <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5">
+                    <div className="mb-4">
+                      <h3 className="font-semibold text-slate-900 dark:text-white">Tailored Follow-Up Resources</h3>
+                      <p className="text-sm text-slate-500 mt-1">
+                        AI-picked free links matched to your topic and VARK preferences.
+                      </p>
+                    </div>
+
+                    {resourceLoading ? (
+                      <div className="flex items-center gap-2 text-sm text-slate-500">
+                        <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                        Finding the best resources for this module...
+                      </div>
+                    ) : resourceRecommendations.length > 0 ? (
+                      <LabCards labs={resourceRecommendations} />
+                    ) : (
+                      <p className="text-sm text-slate-500">Resource suggestions will appear here after we process this module.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {currentBlock?.type === "content" && currentBlock.contentBlock && (
                 <ContentBlockViewer
                   block={currentBlock}

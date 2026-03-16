@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect, useCallback } from "react"
 import { useRequireAuth } from "@/hooks/use-auth"
 import { getStudentData, type StudentData } from "@/lib/data-service"
+import { getModuleFeedbackAggregate } from "@/lib/module-feedback"
+import { supabase } from "@/lib/supabaseClient"
 import { StudentHeader } from "@/components/student/header"
 import { StudentSidebar } from "@/components/student/sidebar"
 import { LearningStyleDropdown, type LearningStyleOption, LEARNING_STYLES } from "@/components/student/learning-style-dropdown"
@@ -97,6 +99,8 @@ export default function StudentChatPage() {
   const [selectedStyle, setSelectedStyle] = useState<LearningStyleOption['id']>('reading')
   const [availableStyles, setAvailableStyles] = useState<LearningStyleOption['id'][]>(['reading', 'visual'])
   const [showVoiceChat, setShowVoiceChat] = useState(false)
+  const [feedbackSummary, setFeedbackSummary] = useState("")
+  const [parentContact, setParentContact] = useState<{ parentEmail?: string; parentName?: string }>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -107,6 +111,18 @@ export default function StudentChatPage() {
       setStudentData(data)
 
       if (data) {
+        const { data: authData } = await supabase.auth.getUser()
+        const meta = (authData?.user?.user_metadata || {}) as any
+        setParentContact({
+          parentEmail: meta?.studentDetails?.parentEmail,
+          parentName: meta?.studentDetails?.parentName,
+        })
+
+        const feedback = await getModuleFeedbackAggregate({
+          conceptName: data.masteryByTopic[0]?.topicName || data.recentActivity[0]?.description,
+        })
+        setFeedbackSummary(feedback.promptSummary)
+
         // Set available styles based on student's VARK profile (top 2)
         const dominant = data.varkProfile.dominantStyle?.toLowerCase() as LearningStyleOption['id']
         const secondary = data.varkProfile.secondaryStyle?.toLowerCase() as LearningStyleOption['id']
@@ -183,8 +199,11 @@ What would you like to learn today?`,
             dominantLearningStyle: selectedStyle,
             secondaryStyle: studentData.varkProfile.secondaryStyle,
             currentTopic: studentData.masteryByTopic[0]?.topicName || 'General Learning',
+            conceptId: studentData.masteryByTopic[0]?.topicId,
             masteryLevel: studentData.overallMastery,
             grade: 7,
+            studentId: user?.id,
+            feedbackSummary,
             // Include recent conversation history so the AI retains context
             conversationHistory: [...messages, userMessage].slice(-10).map(m => ({ role: m.role, content: m.content })),
           },
@@ -217,6 +236,108 @@ What would you like to learn today?`,
       }
       
       setMessages((prev) => [...prev, errorMessage])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleResourceRecommendations = async () => {
+    if (!studentData) return
+
+    setIsLoading(true)
+    try {
+      const response = await fetch("/api/ai/resource-linker", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: studentData.masteryByTopic[0]?.topicName || "General Learning",
+          dominantStyle: selectedStyle,
+          secondaryStyle: studentData.varkProfile.secondaryStyle,
+          masteryLevel: studentData.overallMastery,
+        }),
+      })
+
+      const data = await response.json()
+      const assistantMessage: AIMessage = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: data.message || "Here are a few free resources matched to your learning profile.",
+        timestamp: new Date(),
+        style: selectedStyle,
+        labs: data.resources || [],
+      }
+
+      setMessages((prev) => [...prev, assistantMessage])
+    } catch (error) {
+      console.error("Resource recommendation error:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleParentSnapshot = async () => {
+    if (!studentData || !parentContact.parentEmail) return
+
+    setIsLoading(true)
+    try {
+      const response = await fetch("/api/ai/parent-progress", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentId: user?.id,
+          parentEmail: parentContact.parentEmail,
+          parentName: parentContact.parentName,
+          studentSnapshot: {
+            studentName: studentData.name,
+            overallMastery: studentData.overallMastery,
+            engagementLevel: studentData.engagementIndex,
+            dominantStyle: studentData.varkProfile.dominantStyle,
+            masteryByTopic: studentData.masteryByTopic.map((topic) => ({
+              topicName: topic.topicName,
+              score: topic.score,
+            })),
+            badges: [],
+            recentActivity: studentData.recentActivity.map((activity) => ({
+              description: activity.description,
+              timestamp: activity.timestamp,
+            })),
+          },
+        }),
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data?.error || "Unable to create a parent snapshot.")
+      }
+
+      if (data.mailtoUrl && data.deliveryStatus !== "sent") {
+        window.location.href = data.mailtoUrl
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content:
+            data.deliveryStatus === "sent"
+              ? `Your weekly mastery snapshot has been emailed to ${parentContact.parentEmail}.`
+              : `I drafted a weekly mastery snapshot for ${parentContact.parentEmail}. Review the email draft and send when ready.`,
+          timestamp: new Date(),
+          style: selectedStyle,
+        },
+      ])
+    } catch (error: any) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: error?.message || "I couldn't prepare the parent snapshot just now.",
+          timestamp: new Date(),
+          style: selectedStyle,
+        },
+      ])
     } finally {
       setIsLoading(false)
     }
@@ -385,6 +506,22 @@ What would you like to learn today?`,
                         {prompt}
                       </button>
                     ))}
+                    <button
+                      onClick={handleResourceRecommendations}
+                      disabled={isLoading}
+                      className="flex-shrink-0 px-3 py-1.5 text-xs font-medium bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition disabled:opacity-50"
+                    >
+                      Find free resources
+                    </button>
+                    {parentContact.parentEmail && (
+                      <button
+                        onClick={handleParentSnapshot}
+                        disabled={isLoading}
+                        className="flex-shrink-0 px-3 py-1.5 text-xs font-medium bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition disabled:opacity-50"
+                      >
+                        Share weekly snapshot
+                      </button>
+                    )}
                   </div>
 
                   <form onSubmit={handleSubmit} className="flex gap-3 items-end">
@@ -464,12 +601,12 @@ What would you like to learn today?`,
                 <div className="bg-slate-50 dark:bg-slate-700 rounded-xl p-3">
                   <div className="flex justify-between text-sm mb-1">
                     <span className="text-slate-500">Engagement</span>
-                    <span className="font-semibold text-slate-900 dark:text-white">{studentData.engagementLevel}%</span>
+                    <span className="font-semibold text-slate-900 dark:text-white">{studentData.engagementIndex}%</span>
                   </div>
                   <div className="h-2 bg-slate-200 dark:bg-slate-600 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-blue-500 rounded-full"
-                      style={{ width: `${typeof studentData.engagementLevel === 'number' ? studentData.engagementLevel : 50}%` }}
+                      style={{ width: `${studentData.engagementIndex}%` }}
                     />
                   </div>
                 </div>

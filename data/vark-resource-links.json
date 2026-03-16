@@ -1,0 +1,134 @@
+[
+  {
+    "id": "khan-math",
+    "title": "Khan Academy Math Library",
+    "url": "https://www.khanacademy.org/math",
+    "provider": "Khan Academy",
+    "description": "Free bite-sized lessons and practice sets for algebra, geometry, and arithmetic foundations.",
+    "difficulty": "beginner",
+    "duration": "20-30 mins",
+    "styles": ["reading", "visual"],
+    "tags": ["math", "algebra", "geometry", "fractions", "numbers", "equations"]
+  },
+  {
+    "id": "khan-science",
+    "title": "Khan Academy Science",
+    "url": "https://www.khanacademy.org/science",
+    "provider": "Khan Academy",
+    "description": "Structured science explanations and exercises that match school-level biology, chemistry, and physics topics.",
+    "difficulty": "beginner",
+    "duration": "20-30 mins",
+    "styles": ["reading", "auditory"],
+    "tags": ["science", "biology", "chemistry", "physics", "cells", "energy", "matter"]
+  },
+  {
+    "id": "phet-library",
+    "title": "PhET Interactive Simulations",
+    "url": "https://phet.colorado.edu/en/simulations/filter?type=html",
+    "provider": "PhET",
+    "description": "Manipulate variables in free interactive simulations for science and math concepts.",
+    "difficulty": "intermediate",
+    "duration": "15-25 mins",
+    "styles": ["visual", "kinesthetic"],
+    "tags": ["simulation", "science", "math", "forces", "fractions", "electricity", "graphs"]
+  },
+  {
+    "id": "ck12-flexbooks",
+    "title": "CK-12 FlexBooks",
+    "url": "https://www.ck12.org/student/",
+    "provider": "CK-12",
+    "description": "Free concept articles, adaptive practice, and visuals for core middle and high school topics.",
+    "difficulty": "intermediate",
+    "duration": "20-35 mins",
+    "styles": ["reading", "visual"],
+    "tags": ["science", "math", "algebra", "geometry", "biology", "physics"]
+  },
+  {
+    "id": "crash-course",
+    "title": "Crash Course Study Hall",
+    "url": "https://thecrashcourse.com/topic/study-skills/",
+    "provider": "Crash Course",
+    "description": "Fast-paced, engaging videos that help reinforce study skills and big-picture understanding.",
+    "difficulty": "beginner",
+    "duration": "10-15 mins",
+    "styles": ["auditory", "visual"],
+    "tags": ["study skills", "overview", "history", "science", "reading", "learning"]
+  },
+  {
+    "id": "bbc-bitesize",
+    "title": "BBC Bitesize",
+    "url": "https://www.bbc.co.uk/bitesize",
+    "provider": "BBC Bitesize",
+    "description": "Short explainers, quizzes, and revision guides across English, math, and science.",
+    "difficulty": "beginner",
+    "duration": "10-20 mins",
+    "styles": ["reading", "visual"],
+    "tags": ["revision", "english", "math", "science", "grammar", "reading comprehension"]
+  },
+  {
+    "id": "national-geographic-education",
+    "title": "National Geographic Education",
+    "url": "https://education.nationalgeographic.org/resource-library/",
+    "provider": "National Geographic",
+    "description": "Story-driven geography and science resources with strong visuals and real-world connections.",
+    "difficulty": "intermediate",
+    "duration": "20-30 mins",
+    "styles": ["visual", "reading"],
+    "tags": ["geography", "earth science", "climate", "maps", "ecosystems"]
+  },
+  {
+    "id": "ted-ed",
+    "title": "TED-Ed Lessons",
+    "url": "https://ed.ted.com/lessons",
+    "provider": "TED-Ed",
+    "description": "Animated mini-lessons that blend narration, visuals, and reflection questions.",
+    "difficulty": "intermediate",
+    "duration": "10-15 mins",
+    "styles": ["auditory", "visual"],
+    "tags": ["critical thinking", "science", "math", "history", "explainers"]
+  },
+  {
+    "id": "readworks",
+    "title": "ReadWorks Article Library",
+    "url": "https://www.readworks.org/",
+    "provider": "ReadWorks",
+    "description": "Reading passages and comprehension activities that are useful for literacy-heavy modules.",
+    "difficulty": "beginner",
+    "duration": "15-25 mins",
+    "styles": ["reading"],
+    "tags": ["reading", "literacy", "comprehension", "english", "articles"]
+  },
+  {
+    "id": "desmos",
+    "title": "Desmos Classroom Activities",
+    "url": "https://teacher.desmos.com/",
+    "provider": "Desmos",
+    "description": "Interactive graphing and activity-based math exploration for functions, geometry, and data.",
+    "difficulty": "intermediate",
+    "duration": "15-30 mins",
+    "styles": ["visual", "kinesthetic"],
+    "tags": ["graphing", "algebra", "geometry", "functions", "data", "math"]
+  },
+  {
+    "id": "code-org",
+    "title": "Code.org Learning Labs",
+    "url": "https://studio.code.org/catalog",
+    "provider": "Code.org",
+    "description": "Hands-on logic, sequencing, and problem-solving activities through guided labs.",
+    "difficulty": "beginner",
+    "duration": "20-40 mins",
+    "styles": ["kinesthetic", "visual"],
+    "tags": ["coding", "logic", "problem solving", "algorithms", "sequencing"]
+  },
+  {
+    "id": "smithsonian-learning",
+    "title": "Smithsonian Learning Lab",
+    "url": "https://learninglab.si.edu/",
+    "provider": "Smithsonian",
+    "description": "Primary-source rich collections and curated classroom resources for history and interdisciplinary learning.",
+    "difficulty": "intermediate",
+    "duration": "15-30 mins",
+    "styles": ["reading", "visual"],
+    "tags": ["history", "social studies", "primary sources", "culture", "research"]
+  }
+]
