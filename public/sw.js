@@ -64,3 +64,15 @@ self.addEventListener("message", (event) => {
     self.skipWaiting()
   }
 })
+
+self.addEventListener("sync", (event) => {
+  if (event.tag !== "lesson-progress-sync") return
+
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      clients.forEach((client) => {
+        client.postMessage({ type: "SYNC_LESSON_PROGRESS" })
+      })
+    }),
+  )
+})

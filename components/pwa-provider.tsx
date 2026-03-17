@@ -74,6 +74,14 @@ export function PwaProvider() {
       })
     }
 
+    const handleServiceWorkerMessage = (event: MessageEvent) => {
+      if (event.data?.type === "SYNC_LESSON_PROGRESS") {
+        flushPendingProgressSync().catch((error) => {
+          console.warn("Background sync flush failed:", error)
+        })
+      }
+    }
+
     const handleBeforeInstallPrompt = (event: Event) => {
       event.preventDefault()
       setInstallPrompt(event as DeferredInstallPrompt)
@@ -89,12 +97,14 @@ export function PwaProvider() {
     window.addEventListener("online", handleOnline)
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt)
     window.addEventListener("appinstalled", handleInstalled)
+    navigator.serviceWorker.addEventListener("message", handleServiceWorkerMessage)
 
     return () => {
       cancelled = true
       window.removeEventListener("online", handleOnline)
       window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt)
       window.removeEventListener("appinstalled", handleInstalled)
+      navigator.serviceWorker.removeEventListener("message", handleServiceWorkerMessage)
     }
   }, [])
 

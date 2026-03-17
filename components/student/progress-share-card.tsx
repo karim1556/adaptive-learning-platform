@@ -22,6 +22,7 @@ export function ProgressShareCard({ studentId, parentEmail, parentName, studentS
   const [email, setEmail] = useState(parentEmail || "")
   const [status, setStatus] = useState<null | { type: "success" | "draft"; message: string }>(null)
   const [isSending, setIsSending] = useState(false)
+  const studentDisplayName = studentSnapshot.studentName?.trim() || "Your child"
 
   const topStrength = useMemo(() => {
     return [...studentSnapshot.masteryByTopic].sort((a, b) => b.score - a.score)[0]
@@ -79,7 +80,7 @@ export function ProgressShareCard({ studentId, parentEmail, parentName, studentS
 
       <div className="mt-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 p-4 text-sm text-slate-600 dark:text-slate-300">
         <p>
-          Snapshot preview: {studentSnapshot.studentName} is at {Math.round(studentSnapshot.overallMastery)}% mastery and{" "}
+          Snapshot preview: {studentDisplayName} is at {Math.round(studentSnapshot.overallMastery)}% mastery and{" "}
           {Math.round(studentSnapshot.engagementLevel)}% engagement.
         </p>
         {topStrength && (

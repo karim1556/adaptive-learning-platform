@@ -39,6 +39,7 @@ function escapeHtml(value: string) {
 }
 
 export function buildWeeklyProgressSnapshot(input: ProgressSnapshotInput): ProgressSnapshot {
+  const studentName = input.studentName?.trim() || "Your child"
   const today = new Date()
   const weekAgo = new Date(today)
   weekAgo.setDate(today.getDate() - 7)
@@ -68,14 +69,14 @@ export function buildWeeklyProgressSnapshot(input: ProgressSnapshotInput): Progr
     ...(recentMoments.length > 0 ? [`Recent activity: ${recentMoments.join(" | ")}.`] : []),
   ]
 
-  const headline = `${input.studentName}'s weekly mastery snapshot`
-  const summary = `${input.studentName} is tracking at ${Math.round(input.overallMastery)}% mastery with ${Math.round(input.engagementLevel)}% engagement from ${formatDate(weekAgo)} to ${formatDate(today)}.`
-  const subject = `AMEP Weekly Snapshot for ${input.studentName}`
+  const headline = `${studentName}'s weekly mastery snapshot`
+  const summary = `${studentName} is tracking at ${Math.round(input.overallMastery)}% mastery with ${Math.round(input.engagementLevel)}% engagement from ${formatDate(weekAgo)} to ${formatDate(today)}.`
+  const subject = `AMEP Weekly Snapshot for ${studentName}`
 
   const textBody = [
     `Hello ${input.parentName || "Parent/Guardian"},`,
     "",
-    `Here is this week's Adaptive Mastery & Engagement Platform snapshot for ${input.studentName}.`,
+    `Here is this week's Adaptive Mastery & Engagement Platform snapshot for ${studentName}.`,
     "",
     `Summary: ${summary}`,
     "",

@@ -1,8 +1,9 @@
 "use client"
 
 import { useRequireAuth } from "@/hooks/use-auth"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
+import html2canvas from "html2canvas"
 import { supabase } from "@/lib/supabaseClient"
 import { MasteryBadges } from "@/components/student/mastery-badges"
 import { ProgressShareCard } from "@/components/student/progress-share-card"
@@ -34,6 +35,7 @@ import {
   CheckCircle,
   Play,
   Copy,
+  Download,
   ExternalLink
 } from "lucide-react"
 import type { StudentDashboardData } from "@/lib/student-data"
@@ -80,6 +82,7 @@ export default function StudentDashboard() {
   const [badges, setBadges] = useState<MasteryBadge[]>([])
   const [shareStatus, setShareStatus] = useState("")
   const [isLoading, setIsLoading] = useState(true)
+  const shareCardRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -274,6 +277,27 @@ export default function StudentDashboard() {
 
     await navigator.clipboard.writeText(achievementShareText)
     await openTweetComposer()
+  }
+
+  const handleExportShareImage = async () => {
+    if (!shareCardRef.current) return
+
+    try {
+      const canvas = await html2canvas(shareCardRef.current, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+      })
+
+      const dataUrl = canvas.toDataURL("image/png")
+      const anchor = document.createElement("a")
+      anchor.href = dataUrl
+      anchor.download = `amep-achievement-${new Date().toISOString().split("T")[0]}.png`
+      anchor.click()
+      setShareStatus("Achievement image exported. Attach it to your social post.")
+    } catch (error) {
+      console.error("Failed to export achievement image:", error)
+      setShareStatus("Could not export achievement image right now.")
+    }
   }
 
   return (
@@ -554,8 +578,18 @@ export default function StudentDashboard() {
                     <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">#AdaptiveMastery</span>
                   </div>
 
-                  <div className="mt-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 p-4 text-sm text-slate-700 dark:text-slate-300">
-                    {achievementShareText}
+                  <div ref={shareCardRef} className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">AMEP Achievement Snapshot</p>
+                    <p className="mt-2 text-base font-medium text-slate-900">{studentData.name}</p>
+                    <p className="mt-2">{achievementShareText}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {badges.filter((badge) => badge.earned).slice(0, 3).map((badge) => (
+                        <span key={badge.id} className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-medium text-indigo-700">
+                          {badge.name}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="mt-3 text-xs text-slate-500">{Math.round(studentData.overallMasteryScore)}% mastery • #AdaptiveMastery #AMEP</p>
                   </div>
 
                   <div className="mt-4 flex flex-wrap gap-2">
@@ -574,6 +608,14 @@ export default function StudentDashboard() {
                     >
                       <Copy className="w-4 h-4" />
                       Copy for LinkedIn
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleExportShareImage}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+                    >
+                      <Download className="w-4 h-4" />
+                      Export Image
                     </button>
                   </div>
 

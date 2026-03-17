@@ -84,27 +84,29 @@ export function LearningStyleDropdown({
   }, [])
 
   return (
-    <div ref={dropdownRef} className={`relative ${className}`}>
+    <div ref={dropdownRef} className={`relative w-full sm:w-auto ${className}`}>
       {/* Trigger Button */}
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors border border-slate-200 dark:border-slate-600"
+        className="flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-100 px-3 py-3 transition-colors hover:bg-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:hover:bg-slate-600 sm:w-auto sm:justify-start sm:rounded-lg sm:px-3 sm:py-2"
       >
-        <div className={`w-5 h-5 rounded flex items-center justify-center ${selectedStyle.bgColor}`}>
-          <SelectedIcon className="w-3 h-3 text-white" />
+        <div className="flex min-w-0 items-center gap-2">
+          <div className={`flex h-5 w-5 items-center justify-center rounded ${selectedStyle.bgColor}`}>
+            <SelectedIcon className="h-3 w-3 text-white" />
+          </div>
+          <span className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+            {selectedStyle.label}
+          </span>
         </div>
-        <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
-          {selectedStyle.label}
-        </span>
         <ChevronDown
-          className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
         />
       </button>
 
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute left-0 bottom-full mb-2 w-64 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden z-50">
+        <div className="absolute bottom-full left-0 z-50 mb-2 w-full max-w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800 sm:w-64">
           <div className="p-2 border-b border-slate-100 dark:border-slate-700">
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400 px-2">
               Select Learning Style
