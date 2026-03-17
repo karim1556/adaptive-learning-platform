@@ -1,5 +1,5 @@
 import type React from "react"
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Analytics } from "@vercel/analytics/next"
 import { PwaProvider } from "@/components/pwa-provider"
 import "./globals.css"
@@ -12,11 +12,11 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
-        url: "/placeholder-logo.png",
+        url: "/pwa-192.png",
         media: "(prefers-color-scheme: light)",
       },
       {
-        url: "/placeholder-logo.png",
+        url: "/pwa-192.png",
         media: "(prefers-color-scheme: dark)",
       },
       {
@@ -26,6 +26,15 @@ export const metadata: Metadata = {
     ],
     apple: "/apple-icon.png",
   },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "AdaptIQ",
+  },
+}
+
+export const viewport: Viewport = {
+  themeColor: "#2563eb",
 }
 
 export default function RootLayout({

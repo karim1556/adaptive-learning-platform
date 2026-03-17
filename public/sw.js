@@ -6,8 +6,11 @@ const APP_SHELL = [
   "/student/dashboard",
   "/student/lessons",
   "/student/chat",
+  "/manifest.webmanifest",
   "/placeholder-logo.png",
   "/apple-icon.png",
+  "/pwa-192.png",
+  "/pwa-512.png",
   "/icon.svg",
 ]
 
