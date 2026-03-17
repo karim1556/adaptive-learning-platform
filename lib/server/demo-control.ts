@@ -76,9 +76,8 @@ function buildVarkScores(dominantStyle: string, secondaryStyle: string) {
 
 function buildCheckpointAttempts(score: number, completed: boolean) {
   const adjusted = clamp(score)
-  const first = clamp(completed ? adjusted - 4 : adjusted - 10)
   return [
-    { checkpointId: `demo-a`, percentage: first, score: first, maxScore: 100, completedAt: new Date().toISOString() },
+    { checkpointId: `demo-a`, percentage: adjusted, score: adjusted, maxScore: 100, completedAt: new Date().toISOString() },
     { checkpointId: `demo-b`, percentage: adjusted, score: adjusted, maxScore: 100, completedAt: new Date().toISOString() },
   ]
 }
@@ -86,10 +85,7 @@ function buildCheckpointAttempts(score: number, completed: boolean) {
 function buildDemoFeedbackRatings(average: number, count: number) {
   const safeCount = Math.max(0, Math.min(8, Math.round(count)))
   const base = Math.max(1, Math.min(5, Number(average || 0)))
-  return Array.from({ length: safeCount }, (_, index) => {
-    const offset = index % 3 === 0 ? 0 : index % 3 === 1 ? -0.5 : 0.5
-    return Math.max(1, Math.min(5, Math.round(base + offset)))
-  })
+  return Array.from({ length: safeCount }, () => Math.max(1, Math.min(5, Number(base.toFixed(1)))))
 }
 
 function uniqueIds(values: Array<string | null | undefined>) {
@@ -121,11 +117,21 @@ function normalizeDemoLessonRecord(record: any, fallbackMode = "reading") {
   }
 }
 
-async function selectPublishedLessonsForDemo(adminClient: any, classIds: string[], fallbackMode: string) {
+async function selectPublishedLessonsForDemo(
+  adminClient: any,
+  classIds: string[],
+  classCodes: string[],
+  teacherId: string | null,
+  fallbackMode: string,
+) {
   const buildQuery = (selectClause: string) => {
     let query = adminClient.from("lessons").select(selectClause).eq("published", true)
     if (classIds.length > 0) {
       query = query.in("class_id", classIds)
+    } else if (classCodes.length > 0) {
+      query = query.in("class_code", classCodes)
+    } else if (teacherId) {
+      query = query.eq("teacher_id", teacherId)
     }
     return query.limit(12)
   }
@@ -552,17 +558,44 @@ async function ensureDemoLessons(params: {
   const classIds = (classRows || [])
     .map((row: any) => row.class_id || row.classes?.id)
     .filter(Boolean)
+  const classCodes = (classRows || [])
+    .map((row: any) => row.class_code || row.classes?.class_code)
+    .filter(Boolean)
   const fallbackMode = styles.dominantStyle.toLowerCase()
-  const existingLessons = await selectPublishedLessonsForDemo(adminClient, classIds, fallbackMode)
+  let resolvedClassId = classRows?.[0]?.class_id || classRows?.[0]?.classes?.id || null
+  let resolvedClassCode = classRows?.[0]?.class_code || classRows?.[0]?.classes?.class_code || null
+  let resolvedTeacherId = classRows?.[0]?.classes?.teacher_id || null
+
+  if ((!resolvedClassId || !resolvedTeacherId) && resolvedClassCode) {
+    const { data: classByCode } = await adminClient
+      .from("classes")
+      .select("id, class_code, subject, teacher_id")
+      .eq("class_code", resolvedClassCode)
+      .maybeSingle()
+
+    if (classByCode) {
+      resolvedClassId = resolvedClassId || classByCode.id
+      resolvedClassCode = resolvedClassCode || classByCode.class_code
+      resolvedTeacherId = resolvedTeacherId || classByCode.teacher_id
+    }
+  }
+
+  const existingLessons = await selectPublishedLessonsForDemo(
+    adminClient,
+    classIds,
+    classCodes,
+    resolvedTeacherId,
+    fallbackMode,
+  )
   if (existingLessons && existingLessons.length > 0) {
     return existingLessons
   }
 
   const concepts = await ensureDemoConcepts(adminClient)
   const primaryClass = classRows?.[0]
-  const classId = primaryClass?.class_id || primaryClass?.classes?.id || null
-  const classCode = primaryClass?.class_code || primaryClass?.classes?.class_code || null
-  const teacherId = primaryClass?.classes?.teacher_id || null
+  const classId = resolvedClassId || primaryClass?.class_id || primaryClass?.classes?.id || null
+  const classCode = resolvedClassCode || primaryClass?.class_code || primaryClass?.classes?.class_code || null
+  const teacherId = resolvedTeacherId || primaryClass?.classes?.teacher_id || null
   const subject = primaryClass?.classes?.subject || "Adaptive Learning"
   const lessonModes = [
     styles.dominantStyle.toLowerCase(),
@@ -599,6 +632,7 @@ async function ensureDemoLessons(params: {
 export async function applyDemoOverrides(input: DemoOverrideInput) {
   const adminClient = getDemoAdminClient()
   const { profile, user, authUserId, candidateStudentIds } = await resolveStudent(adminClient, input.studentId)
+  const progressStudentId = authUserId || profile.user_id
 
   const now = new Date()
   const nowIso = now.toISOString()
@@ -615,7 +649,7 @@ export async function applyDemoOverrides(input: DemoOverrideInput) {
     adminClient,
     profile,
     user,
-    authUserId,
+    authUserId: progressStudentId,
     candidateStudentIds,
     styles,
     overallMastery,
@@ -634,31 +668,31 @@ export async function applyDemoOverrides(input: DemoOverrideInput) {
     const resetOps = [
       adminClient.from("mastery_records").delete().eq("student_id", profile.id),
       adminClient.from("engagement_logs").delete().in("student_id", [profile.id, profile.user_id]),
+      adminClient.from("class_students").delete().in("student_id", candidateStudentIds),
     ]
 
-    if (authUserId) {
+    if (progressStudentId) {
       resetOps.push(
-        adminClient.from("lesson_progress").delete().eq("student_id", authUserId),
-        adminClient.from("student_badges").delete().eq("student_id", authUserId),
-        adminClient.from("module_feedback").delete().eq("student_id", authUserId),
+        adminClient.from("lesson_progress").delete().eq("student_id", progressStudentId),
+        adminClient.from("student_badges").delete().eq("student_id", progressStudentId),
+        adminClient.from("module_feedback").delete().eq("student_id", progressStudentId),
       )
     }
 
     await Promise.all(resetOps)
   }
 
-  const progressRows = authUserId
+  const progressRows = progressStudentId
     ? selectedLessons.slice(0, modulesStarted).map((lesson: any, index: number) => {
         const completed = index < modulesCompleted
-        const scoreVariance = [6, 2, -4, 4, -2, 8, -6, 0][index] || 0
-        const lessonScore = clamp(overallMastery + scoreVariance - (completed ? 0 : 8))
+      const lessonScore = clamp(overallMastery)
         const minutes = Math.max(8, Math.round(totalTimeSpent / Math.max(1, modulesStarted)))
         const startedAt = new Date(now.getTime() - (modulesStarted - index) * 24 * 60 * 60 * 1000).toISOString()
         const lastAccessedAt = new Date(now.getTime() - index * 4 * 60 * 60 * 1000).toISOString()
 
         return {
           lesson_id: lesson.id,
-          student_id: authUserId,
+          student_id: progressStudentId,
           lesson_title: lesson.title,
           current_block_index: completed ? 3 : 1,
           completed_blocks: [],
@@ -729,9 +763,9 @@ export async function applyDemoOverrides(input: DemoOverrideInput) {
     console.warn("Demo control could not update vark_profiles:", error)
   }
 
-  if (authUserId) {
+  if (progressStudentId) {
     const profilePayload = {
-      id: authUserId,
+      id: progressStudentId,
       overall_mastery: overallMastery,
       engagement_index: engagementIndex,
       vark_profile: {
@@ -760,24 +794,31 @@ export async function applyDemoOverrides(input: DemoOverrideInput) {
     { onConflict: "id" },
   )
 
-  if (classRows && classRows.length > 0) {
-    await adminClient
-      .from("class_students")
-      .update({
-        mastery_average: overallMastery,
-        engagement_level: engagementIndex,
-        dominant_styles: [styles.dominantStyle, styles.secondaryStyle],
-        last_active: nowIso,
-      })
-      .in("student_id", candidateStudentIds)
+  if (classRows && classRows.length > 0 && progressStudentId) {
+    const classStudentRows = classRows.map((row: any) => ({
+      class_id: row.class_id || row.classes?.id || null,
+      class_code: row.class_code || row.classes?.class_code || null,
+      student_id: progressStudentId,
+      name:
+        user?.first_name || user?.last_name
+          ? `${user?.first_name || ""} ${user?.last_name || ""}`.trim()
+          : user?.email || "Student",
+      email: user?.email || null,
+      dominant_styles: [styles.dominantStyle, styles.secondaryStyle],
+      mastery_average: overallMastery,
+      engagement_level: engagementIndex,
+      last_active: nowIso,
+    }))
+
+    await adminClient.from("class_students").upsert(classStudentRows, { onConflict: "class_code,student_id" })
   }
 
   const feedbackRatings = buildDemoFeedbackRatings(feedbackAverage, feedbackResponses)
-  if (feedbackRatings.length > 0 && authUserId) {
+  if (feedbackRatings.length > 0 && progressStudentId) {
     const feedbackRows = feedbackRatings.map((rating, index) => {
       const lesson = selectedLessons[index % selectedLessons.length]
       return {
-        student_id: authUserId,
+        student_id: progressStudentId,
         lesson_id: lesson.id,
         concept_id: lesson.concept_id || null,
         concept_name: lesson.concept_name || lesson.title,
@@ -796,11 +837,11 @@ export async function applyDemoOverrides(input: DemoOverrideInput) {
   }
 
   const selectedBadges = BADGE_CATALOG.filter((badge) => input.badges.includes(badge.id))
-  if (selectedBadges.length > 0 && authUserId) {
+  if (selectedBadges.length > 0 && progressStudentId) {
     try {
       await adminClient.from("student_badges").upsert(
         selectedBadges.map((badge) => ({
-          student_id: authUserId,
+          student_id: progressStudentId,
           badge_key: badge.id,
           badge_name: badge.name,
           description: badge.description,
@@ -837,9 +878,9 @@ export async function applyDemoOverrides(input: DemoOverrideInput) {
         ? await adminClient.from("users").select("email, first_name").eq("id", parentProfile.user_id).maybeSingle()
         : { data: null }
 
-      if (authUserId) {
+      if (progressStudentId) {
         await adminClient.from("parent_progress_shares").insert({
-          student_id: authUserId,
+          student_id: progressStudentId,
           parent_email: parentUser?.email || "parent@example.com",
           parent_name: parentUser?.first_name || "Parent",
           delivery_status: "sent",
@@ -855,5 +896,5 @@ export async function applyDemoOverrides(input: DemoOverrideInput) {
     console.warn("Demo control could not create parent share history:", error)
   }
 
-  return getStudentInsight(adminClient, { studentProfileId: profile.id, userId: authUserId || profile.user_id })
+  return getStudentInsight(adminClient, { studentProfileId: profile.id, userId: progressStudentId })
 }

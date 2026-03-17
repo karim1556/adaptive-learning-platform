@@ -514,6 +514,15 @@ export default function AMEPDemoControlPage() {
                   </div>
                 </div>
 
+                <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
+                  <p className="font-semibold">How this updates teacher charts</p>
+                  <p className="mt-1">
+                    Heatmap uses <span className="font-semibold">Modules started/completed + Engagement + Study time</span>. Pie charts use
+                    <span className="font-semibold"> Dominant style</span> (VARK mix) and <span className="font-semibold">Overall mastery</span> (mastery bands).
+                    Click <span className="font-semibold">Apply demo values</span>, then refresh the teacher dashboard.
+                  </p>
+                </div>
+
                 <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr_0.85fr]">
                   <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5">
                     <div className="flex items-center gap-2">
