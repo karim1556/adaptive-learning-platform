@@ -40,16 +40,16 @@ export default function AdminDashboard() {
   const adminData = getAdminData(user.id)
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-900">
+    <div className="flex min-h-[100dvh] bg-slate-50 dark:bg-slate-900">
       <AdminSidebar />
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <AdminHeader user={user} />
 
         <main className="flex-1 overflow-auto">
-          <div className="p-6 max-w-7xl mx-auto">
+          <div className="mx-auto max-w-7xl px-4 pb-28 pt-4 sm:px-6 sm:pt-6 lg:pb-8">
             {/* Welcome Section */}
-            <div className="mb-8">
+            <div className="mb-6 sm:mb-8">
               <h1 className="text-3xl font-bold text-slate-900 dark:text-white">{adminData.schoolName}</h1>
               <p className="text-slate-600 dark:text-slate-400 mt-1">School-wide Analytics & Insights</p>
               <div className="mt-2">

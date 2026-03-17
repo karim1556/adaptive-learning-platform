@@ -1,9 +1,10 @@
 "use client"
 
-import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { BarChart3, Users, BookOpen, Settings, FileText, User, TrendingUp, FolderOpen } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { BarChart3, Users, BookOpen, Settings, FileText, User, TrendingUp, FolderOpen, Shield } from "lucide-react"
+import { supabase } from "@/lib/supabaseClient"
+import { useRouter } from "next/navigation"
+import { RoleSidebarShell } from "@/components/navigation/role-sidebar-shell"
 
 const NAV_ITEMS = [
   { name: "Dashboard", href: "/admin/dashboard", icon: BarChart3 },
@@ -20,35 +21,24 @@ const NAV_ITEMS = [
 
 export function AdminSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    document.cookie = "adaptiq_role=; path=/; max-age=0"
+    router.push("/login")
+  }
 
   return (
-    <aside className="w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 p-6">
-      <div className="mb-8">
-        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">AdaptIQ Admin</h2>
-      </div>
-
-      <nav className="space-y-2">
-        {NAV_ITEMS.map((item) => {
-          const Icon = item.icon
-          const isActive = pathname === item.href
-
-          return (
-            <Link key={item.href} href={item.href}>
-              <button
-                className={cn(
-                  "w-full flex items-center gap-3 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100"
-                    : "text-slate-700 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700",
-                )}
-              >
-                <Icon className="w-4 h-4" />
-                {item.name}
-              </button>
-            </Link>
-          )
-        })}
-      </nav>
-    </aside>
+    <RoleSidebarShell
+      pathname={pathname}
+      navItems={NAV_ITEMS.map((item) => ({ ...item, description: "Administrative controls" }))}
+      homeHref="/admin/dashboard"
+      brandTitle="AdaptIQ"
+      brandSubtitle="Admin Console"
+      brandIcon={Shield}
+      accent="slate"
+      onLogout={handleLogout}
+    />
   )
 }

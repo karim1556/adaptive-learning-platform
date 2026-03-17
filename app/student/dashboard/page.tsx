@@ -277,16 +277,16 @@ export default function StudentDashboard() {
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-900">
+    <div className="flex min-h-[100dvh] bg-slate-50 dark:bg-slate-900">
       <StudentSidebar />
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <StudentHeader user={user} />
 
         <main className="flex-1 overflow-auto">
-          <div className="p-6 max-w-6xl mx-auto space-y-6">
+          <div className="mx-auto max-w-6xl space-y-6 px-4 pb-28 pt-4 sm:px-6 sm:pt-6 lg:pb-6">
             {/* Welcome */}
-            <div className="flex items-start justify-between">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div>
                 <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
                   Welcome back, {studentData.name.split(" ")[0]}!
@@ -295,7 +295,7 @@ export default function StudentDashboard() {
                   Here's your personalized learning overview
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {studentData.classes && studentData.classes.length > 0 && (
                   <div className="flex gap-2">
                     {studentData.classes.slice(0, 2).map((c: any) => (
@@ -310,7 +310,7 @@ export default function StudentDashboard() {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               {/* Mastery Score */}
               <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700">
                 <div className="flex items-center justify-between mb-4">

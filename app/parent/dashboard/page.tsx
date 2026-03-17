@@ -345,14 +345,14 @@ export default function ParentDashboard() {
   if (!user) return null
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="flex min-h-[100dvh] bg-slate-50 dark:bg-slate-950">
       <ParentSidebar />
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <ParentHeader user={user} />
 
         <main className="flex-1 overflow-auto">
-          <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+          <div className="mx-auto max-w-7xl space-y-6 px-4 pb-28 pt-4 sm:px-6 lg:px-8 lg:pb-8 lg:pt-6">
             <section className="relative overflow-hidden rounded-[28px] border border-emerald-200/70 dark:border-emerald-900/60 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.25),_transparent_40%),linear-gradient(135deg,#0f172a_0%,#13253f_55%,#0b3b38_100%)] p-6 lg:p-8 text-white">
               <div className="absolute inset-y-0 right-0 w-1/3 bg-[radial-gradient(circle,_rgba(255,255,255,0.12),_transparent_60%)]" />
               <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">

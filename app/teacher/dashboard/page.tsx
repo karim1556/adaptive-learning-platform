@@ -314,14 +314,14 @@ function TeacherDashboardContent() {
   if (!user) return null
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-900">
+    <div className="flex min-h-[100dvh] bg-slate-50 dark:bg-slate-900">
       <TeacherSidebar />
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <TeacherHeader user={user} />
 
         <main className="flex-1 overflow-auto">
-          <div className="p-6 max-w-6xl mx-auto space-y-6">
+          <div className="mx-auto max-w-6xl space-y-6 px-4 pb-28 pt-4 sm:px-6 sm:pt-6 lg:pb-6">
             {/* Profile Setup Modal */}
             {showProfileSetup && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -362,7 +362,7 @@ function TeacherDashboardContent() {
             )}
 
             {/* Welcome */}
-            <div className="flex items-start justify-between">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div>
                 <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
                   Welcome{dashboard?.name ? `, ${dashboard.name.split(" ")[0]}` : ""}!
@@ -373,7 +373,7 @@ function TeacherDashboardContent() {
               </div>
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition"
+                className="inline-flex items-center gap-2 self-start rounded-xl bg-indigo-600 px-4 py-2 text-white font-medium transition hover:bg-indigo-700"
               >
                 <Plus className="w-4 h-4" />
                 New Class
@@ -381,7 +381,7 @@ function TeacherDashboardContent() {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
               <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center">
