@@ -19,6 +19,7 @@ import os
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 import math
 
@@ -499,6 +500,8 @@ def render_job(job_file: Path, job: dict):
 
     try:
         cmd = [
+            sys.executable,
+            "-m",
             "manim",
             str(script_path),
             "GeneratedScene",
@@ -541,6 +544,9 @@ def render_job(job_file: Path, job: dict):
     except subprocess.CalledProcessError as e:
         job["status"] = "failed"
         job["error"] = str(e)
+    except FileNotFoundError as e:
+        job["status"] = "failed"
+        job["error"] = f"Failed to start Manim renderer: {e}"
     finally:
         job["processedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ")
         write_job(job_file, job)
